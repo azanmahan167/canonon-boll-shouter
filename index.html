@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Bubble Cannon - Fixed Aim Line</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
         body {
             background: #090d16;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -15,6 +15,7 @@
             align-items: center;
             min-height: 100vh;
             overflow: hidden;
+            touch-action: none;
         }
         #game-container {
             position: relative;
@@ -26,6 +27,16 @@
             border: 2px solid #334155;
             overflow: hidden;
         }
+        
+        /* Classes for Device Mode */
+        #game-container.mobile-mode {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
         .screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -87,13 +98,21 @@
         <div>Score: <span id="score-display">0</span></div>
     </div>
 
-    <!-- Loading Screen -->
+    <!-- Loading Screen (Difficulty) -->
     <div id="loading-screen" class="screen">
         <h1>Bubble Cannon</h1>
         <p style="color: #94a3b8; margin-bottom: 30px;">Select Difficulty to Start</p>
         <button class="btn" onclick="selectDifficulty('easy')">EASY</button>
         <button class="btn" onclick="selectDifficulty('medium')">MEDIUM</button>
         <button class="btn" onclick="selectDifficulty('hard')">HARD</button>
+    </div>
+
+    <!-- Device Selection Screen -->
+    <div id="device-screen" class="screen" style="display: none;">
+        <h1>Select Mode</h1>
+        <p style="color: #94a3b8; margin-bottom: 30px;">Choose how you want to play</p>
+        <button class="btn" onclick="selectDevice('laptop')">💻 LAPTOP</button>
+        <button class="btn" onclick="selectDevice('mobile')">📱 MOBILE</button>
     </div>
 
     <!-- Game Over Screen -->
@@ -161,6 +180,18 @@ function selectDifficulty(diff) {
     if (diff === 'hard') colorCount = 5;
 
     document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('device-screen').style.display = 'flex';
+}
+
+function selectDevice(device) {
+    let container = document.getElementById('game-container');
+    if (device === 'mobile') {
+        container.classList.add('mobile-mode');
+    } else {
+        container.classList.remove('mobile-mode');
+    }
+
+    document.getElementById('device-screen').style.display = 'none';
     startLevel(currentLevel);
 }
 
@@ -223,32 +254,56 @@ function spawnNextBubble() {
     };
 }
 
-// Mouse Angle Tracking - Guaranteed Upwards
-window.addEventListener('mousemove', (e) => {
+function handleMove(clientX, clientY) {
     if (isShooting || gameOver) return;
     let rect = canvas.getBoundingClientRect();
-    let mouseX = e.clientX - rect.left;
-    let mouseY = e.clientY - rect.top;
+    let mouseX = clientX - rect.left;
+    let mouseY = clientY - rect.top;
     
     let cannonX = canvas.width / 2;
     let cannonY = canvas.height - 45;
 
     let angle = Math.atan2(mouseY - cannonY, mouseX - cannonX);
     
-    // Smooth angle limits (keep cannon facing top canvas half)
     if (angle > -0.1) angle = -0.1;
     if (angle < -Math.PI + 0.1) angle = -Math.PI + 0.1;
 
     cannonAngle = angle;
-});
+}
 
-canvas.addEventListener('click', () => {
+function handleShoot() {
     if (isShooting || gameOver || !currentBubble || currentBubble.active) return;
     let speed = 12;
     currentBubble.dx = Math.cos(cannonAngle) * speed;
     currentBubble.dy = Math.sin(cannonAngle) * speed;
     currentBubble.active = true;
     isShooting = true;
+}
+
+// Mouse Events[cite: 1]
+window.addEventListener('mousemove', (e) => {
+    handleMove(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('click', () => {
+    handleShoot();
+});
+
+// Touch Events for Mobile[cite: 1]
+window.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: true });
+
+canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 0) {
+        handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+}, { passive: true });
+
+canvas.addEventListener('touchend', () => {
+    handleShoot();
 });
 
 function update() {
@@ -448,7 +503,6 @@ function nextAction() {
     startLevel(currentLevel);
 }
 
-// Fixed Aim Line (Never disappears, smooth wall bounces)
 function drawAimLine() {
     if (isShooting || gameOver || !currentBubble) return;
 
@@ -461,7 +515,6 @@ function drawAimLine() {
     let maxDots = 35;
     let dotCount = 0;
 
-    // Shift start position outside cannon mouth
     currX += dirX * 50;
     currY += dirY * 50;
 
@@ -470,21 +523,17 @@ function drawAimLine() {
         currX += dirX * step;
         currY += dirY * step;
 
-        // Bounce Left
         if (currX <= RADIUS) {
             currX = RADIUS;
             dirX *= -1;
         }
-        // Bounce Right
         if (currX >= canvas.width - RADIUS) {
             currX = canvas.width - RADIUS;
             dirX *= -1;
         }
 
-        // Stop at top edge
         if (currY <= RADIUS + 10) break;
 
-        // Stop if hitting any grid bubble
         let hit = false;
         for (let r = 0; r < ROWS; r++) {
             for (let c = 0; c < COLS; c++) {
@@ -500,7 +549,6 @@ function drawAimLine() {
         }
         if (hit) break;
 
-        // Draw Dot
         ctx.beginPath();
         ctx.arc(currX, currY, 4, 0, Math.PI * 2);
         ctx.fillStyle = currentBubble.color;
@@ -532,7 +580,6 @@ function drawBubble(x, y, color) {
     ctx.restore();
 }
 
-// Glass Crack Drawing
 function drawCrackingBubble(pb) {
     let elapsed = (Date.now() - pb.startTime) / 1000;
     
@@ -573,7 +620,6 @@ function drawCrackingBubble(pb) {
     ctx.restore();
 }
 
-// Cannon Drawing
 function drawRealisticCannon() {
     let cx = canvas.width / 2;
     let cy = canvas.height - 45;
